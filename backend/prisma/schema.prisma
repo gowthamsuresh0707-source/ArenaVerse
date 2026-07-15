@@ -1,0 +1,289 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  GUEST
+  PLAYER
+  TEAM_CAPTAIN
+  ORGANIZER
+  MODERATOR
+  ADMIN
+}
+
+enum TeamRole {
+  CAPTAIN
+  VICE_CAPTAIN
+  MEMBER
+  SUBSTITUTE
+}
+
+enum TransactionType {
+  DEPOSIT
+  ENTRY_FEE
+  PRIZE
+  WIN_REFUND
+  WITHDRAWAL
+  ADMIN_CREDIT
+  ADMIN_DEBIT
+}
+
+enum TransactionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  CANCELLED
+}
+
+enum BracketType {
+  SINGLE_ELIMINATION
+  DOUBLE_ELIMINATION
+  SWISS
+  ROUND_ROBIN
+}
+
+enum MatchStatus {
+  UPCOMING
+  LIVE
+  COMPLETED
+}
+
+model User {
+  id             String         @id @default(uuid())
+  email          String         @unique
+  username       String         @unique
+  passwordHash   String?
+  role           Role           @default(PLAYER)
+  bio            String?
+  country        String?
+  age            Int?
+  avatarUrl      String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  // Profile Stats
+  matchesPlayed  Int            @default(0)
+  wins           Int            @default(0)
+  losses         Int            @default(0)
+  kdRatio        Float          @default(0.0)
+
+  // Relations
+  wallet         Wallet?
+  teamMembers    TeamMember[]
+  captainTeams   Team[]         @relation("TeamCaptain")
+  organizedTournaments Tournament[] @relation("OrganizerTournaments")
+  auditLogs      AuditLog[]
+  reportsCreated Report[]       @relation("ReportCreator")
+  reportsTargeted Report[]      @relation("ReportTarget")
+  notifications  Notification[]
+  sentMessages   Message[]      @relation("SentMessages")
+  friendsSent    Friend[]       @relation("FriendSender")
+  friendsRecv    Friend[]       @relation("FriendReceiver")
+  achievements   UserAchievement[]
+}
+
+model Wallet {
+  id           String              @id @default(uuid())
+  balance      Decimal             @default(0.00) @db.Decimal(12, 2)
+  userId       String              @unique
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions WalletTransaction[]
+  withdrawals  Withdrawal[]
+}
+
+model WalletTransaction {
+  id          String            @id @default(uuid())
+  walletId    String
+  wallet      Wallet            @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  type        TransactionType
+  amount      Decimal           @db.Decimal(12, 2)
+  status      TransactionStatus @default(PENDING)
+  referenceId String?           // Razorpay payment ID, refund ID, etc.
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+}
+
+model Withdrawal {
+  id          String            @id @default(uuid())
+  walletId    String
+  wallet      Wallet            @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  amount      Decimal           @db.Decimal(12, 2)
+  status      TransactionStatus @default(PENDING)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+}
+
+model Team {
+  id           String       @id @default(uuid())
+  name         String       @unique
+  logoUrl      String?
+  bannerUrl    String?
+  captainId    String
+  captain      User         @relation("TeamCaptain", fields: [captainId], references: [id])
+  members      TeamMember[]
+  tournaments  TournamentTeam[]
+  invitations  TeamInvitation[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+}
+
+model TeamMember {
+  id        String   @id @default(uuid())
+  teamId    String
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      TeamRole @default(MEMBER)
+  joinedAt  DateTime @default(now())
+
+  @@unique([teamId, userId])
+}
+
+model TeamInvitation {
+  id        String   @id @default(uuid())
+  teamId    String
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  inviteeId String
+  status    TransactionStatus @default(PENDING)
+  createdAt DateTime @default(now())
+}
+
+model Game {
+  id          String       @id @default(uuid())
+  name        String       @unique
+  genre       String?
+  bannerUrl   String?
+  tournaments Tournament[]
+}
+
+model Tournament {
+  id                  String           @id @default(uuid())
+  title               String
+  description         String
+  rules               String
+  bannerUrl           String?
+  entryFee            Decimal          @default(0.00) @db.Decimal(12, 2)
+  prizePool           Decimal          @default(0.00) @db.Decimal(12, 2)
+  maxTeams            Int
+  currentTeamsCount   Int              @default(0)
+  registrationDeadline DateTime
+  startDate           DateTime
+  endDate             DateTime
+  gameMode            String           // Solo, Duo, Squad, 5v5, etc.
+  bracketType         BracketType      @default(SINGLE_ELIMINATION)
+  organizerId         String
+  organizer           User             @relation("OrganizerTournaments", fields: [organizerId], references: [id])
+  gameId              String
+  game                Game             @relation(fields: [gameId], references: [id])
+  teams               TournamentTeam[]
+  matches             Match[]
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+}
+
+model TournamentTeam {
+  id           String     @id @default(uuid())
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  teamId       String
+  team         Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  registeredAt DateTime   @default(now())
+
+  @@unique([tournamentId, teamId])
+}
+
+model Match {
+  id           String       @id @default(uuid())
+  tournamentId String
+  tournament   Tournament   @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  team1Id      String?
+  team2Id      String?
+  score1       Int          @default(0)
+  score2       Int          @default(0)
+  winnerId     String?
+  status       MatchStatus  @default(UPCOMING)
+  roundIndex   Int          @default(0)
+  matchIndex   Int          @default(0)
+  roomId       String?
+  roomPassword String?
+  screenshotUrl String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model Message {
+  id         String   @id @default(uuid())
+  senderId   String
+  sender     User     @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  receiverId String?  // Optional for DM
+  teamId     String?  // Optional for team chat
+  content    String
+  createdAt  DateTime @default(now())
+}
+
+model Friend {
+  id         String            @id @default(uuid())
+  senderId   String
+  sender     User              @relation("FriendSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiverId String
+  receiver   User              @relation("FriendReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+  status     TransactionStatus @default(PENDING)
+  createdAt  DateTime          @default(now())
+
+  @@unique([senderId, receiverId])
+}
+
+model UserAchievement {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievementId String
+  achievement   Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+  unlockedAt    DateTime @default(now())
+
+  @@unique([userId, achievementId])
+}
+
+model Achievement {
+  id          String   @id @default(uuid())
+  title       String   @unique
+  description String
+  badgeUrl    String?
+  users       UserAchievement[]
+}
+
+model Report {
+  id          String   @id @default(uuid())
+  reporterId  String
+  reporter    User     @relation("ReportCreator", fields: [reporterId], references: [id], onDelete: Cascade)
+  targetId    String
+  target      User     @relation("ReportTarget", fields: [targetId], references: [id], onDelete: Cascade)
+  reason      String
+  resolved    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String
+  details   String
+  ipAddress String?
+  createdAt DateTime @default(now())
+}
