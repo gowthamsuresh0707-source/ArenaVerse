@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { api } from '../utils/api';
-import { Wand2, ShieldCheck, HelpCircle } from 'lucide-react';
+import { Wand2 } from 'lucide-react';
 
 export const AITools: React.FC = () => {
   const [gameName, setGameName] = useState('');

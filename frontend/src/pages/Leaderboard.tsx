@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../utils/api';
-import { Award, ShieldAlert, Zap } from 'lucide-react';
+import { Award } from 'lucide-react';
 
 interface LeaderboardPlayer {
   id: string;

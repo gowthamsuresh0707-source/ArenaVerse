@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuthStore } from '../stores/authStore';
 import { api } from '../utils/api';
-import { Send, User } from 'lucide-react';
+import { Send } from 'lucide-react';
 
 interface ChatMessage {
   id: string;
@@ -15,7 +15,7 @@ export const TeamChat: React.FC = () => {
   const { user } = useAuthStore();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [text, setText] = useState('');
-  const [socket, setSocket] = useState<any>(null);
+
 
   // Default team channel for demonstration purposes
   const teamId = 'demo-team-id';
